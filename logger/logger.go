@@ -75,7 +75,7 @@ func initLogger() {
 
 	level, err := logrus.ParseLevel(os.Getenv(LOG_LEVEL))
 	if err != nil {
-		Log.Fatalf("Failed to parse log level: %v", err)
+		level = logrus.InfoLevel // Default to Info level if parsing fails
 	}
 	Log.SetLevel(level)
 }
