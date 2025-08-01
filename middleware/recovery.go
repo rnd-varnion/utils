@@ -6,8 +6,8 @@ import (
 	"runtime/debug"
 
 	"github.com/gin-gonic/gin"
-	"github.com/varnion-rnd/utils/logger"
-	"github.com/varnion-rnd/utils/tools"
+	"github.com/rnd-varnion/utils/logger"
+	"github.com/rnd-varnion/utils/tools"
 )
 
 func Recovery() gin.HandlerFunc {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"github.com/varnion-rnd/utils/logger"
+	"github.com/rnd-varnion/utils/logger"
 )
 
 var (

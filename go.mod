@@ -1,4 +1,4 @@
-module github.com/varnion-rnd/utils
+module github.com/rnd-varnion/utils
 
 go 1.23.4
 
