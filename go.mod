@@ -8,6 +8,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/influxdata/influxdb-client-go/v2 v2.14.0
+	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	go.mongodb.org/mongo-driver v1.17.4
 )
