@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,6 +25,7 @@ var Log *logrus.Logger
 var ApiRequestLog *logrus.Logger
 
 func init() {
+	godotenv.Load()
 	initLogger()
 	initApiRequestLogger()
 }
