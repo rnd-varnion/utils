@@ -8,7 +8,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/sirupsen/logrus"
+	"github.com/rnd-varnion/utils/logger"
 )
 
 var (
@@ -30,7 +30,7 @@ type UploadPayload struct {
 	Size        int64
 }
 
-func NewStorage(log *logrus.Entry) (*Storage, error) {
+func NewStorage() (*Storage, error) {
 	endpoint := os.Getenv(MINIO_ENDPOINT)
 	accessKeyID := os.Getenv(MINIO_ACCESS_KEY)
 	secretAccessKey := os.Getenv(MINIO_SECRET_KEY)
@@ -40,7 +40,7 @@ func NewStorage(log *logrus.Entry) (*Storage, error) {
 		Secure: true,
 	})
 	if err != nil {
-		log.Fatalln("Failed to initialize storage minio, err: ", err)
+		logger.Log.Fatalln("Failed to initialize storage minio, err: ", err)
 		return nil, err
 	}
 
