@@ -22,12 +22,41 @@ var (
 var conn net.Conn
 
 var Log *logrus.Logger
-var ApiRequestLog *logrus.Logger
 
 func init() {
 	godotenv.Load()
 	initLogger()
-	initApiRequestLogger()
+}
+
+func InitCustomLogger(logType string, level string, useLogstash bool) *logrus.Logger {
+	customLog := logrus.New()
+
+	if useLogstash {
+		err := initLogstash()
+		if err == nil {
+			// Set logger output to the logstash
+			customLog.SetOutput(conn)
+		} else {
+			customLog.Errorf("Failed to connect to Logstash: %v", err)
+			customLog.SetOutput(os.Stdout)
+		}
+	} else {
+		customLog.SetOutput(os.Stdout)
+	}
+
+	customLog.SetFormatter(&logrus.JSONFormatter{})
+
+	// Add the hook here
+	customLog.AddHook(&ServiceHook{ServiceName: os.Getenv(LOG_SERVICE_NAME), Type: logType})
+	customLog.AddHook(NewErrorCallerHook(7))
+
+	levelLogrus, err := logrus.ParseLevel(level)
+	if err != nil {
+		levelLogrus = logrus.InfoLevel // Default to Info level if parsing fails
+	}
+	customLog.SetLevel(levelLogrus)
+
+	return customLog
 }
 
 func initLogstash() error {
@@ -62,7 +91,7 @@ func initLogger() {
 			// Set logger output to the logstash
 			Log.SetOutput(conn)
 		} else {
-			Log.Fatalf("Failed to connect to Logstash: %v", err)
+			Log.Errorf("Failed to connect to Logstash: %v", err)
 			Log.SetOutput(os.Stdout)
 		}
 	} else {
@@ -72,7 +101,7 @@ func initLogger() {
 	Log.SetFormatter(&logrus.JSONFormatter{})
 
 	// Add the hook here
-	Log.AddHook(&ServiceHook{ServiceName: os.Getenv(LOG_SERVICE_NAME)})
+	Log.AddHook(&ServiceHook{ServiceName: os.Getenv(LOG_SERVICE_NAME), Type: "app_log"})
 	Log.AddHook(NewErrorCallerHook(7))
 
 	level, err := logrus.ParseLevel(os.Getenv(LOG_LEVEL))
@@ -82,59 +111,21 @@ func initLogger() {
 	Log.SetLevel(level)
 }
 
-func initApiRequestLogger() {
-	ApiRequestLog = logrus.New()
-
-	if os.Getenv(LOG_API_USE_LOGSTASH) == "true" {
-		err := initLogstash()
-		if err == nil {
-			// Set logger output to the logstash
-			ApiRequestLog.SetOutput(conn)
-		} else {
-			ApiRequestLog.Fatalf("Failed to connect to Logstash: %v", err)
-			ApiRequestLog.SetOutput(os.Stdout)
-		}
-	} else {
-		ApiRequestLog.SetOutput(os.Stdout)
-	}
-
-	ApiRequestLog.SetFormatter(&logrus.JSONFormatter{})
-
-	// Add the hook here
-	ApiRequestLog.AddHook(&ServiceHook{ServiceName: os.Getenv(LOG_SERVICE_NAME)})
-	ApiRequestLog.AddHook(&ApiReqHook{})
-
-	ApiRequestLog.SetLevel(logrus.InfoLevel)
-}
-
 // ServiceHook adds a "service" field to every log entry.
 type ServiceHook struct {
 	ServiceName string
+	Type        string
 }
 
 // Fire is called by logrus for every log entry.
 func (hook *ServiceHook) Fire(entry *logrus.Entry) error {
 	entry.Data["service"] = hook.ServiceName
+	entry.Data["type"] = hook.Type
 	return nil
 }
 
 // Levels returns the log levels at which the hook should be fired.
 func (hook *ServiceHook) Levels() []logrus.Level {
-	return logrus.AllLevels
-}
-
-// ApiReqHook adds a "type" field to every log entry.
-type ApiReqHook struct {
-}
-
-// Fire is called by logrus for every log entry.
-func (hook *ApiReqHook) Fire(entry *logrus.Entry) error {
-	entry.Data["type"] = "api_request"
-	return nil
-}
-
-// Levels returns the log levels at which the hook should be fired.
-func (hook *ApiReqHook) Levels() []logrus.Level {
 	return logrus.AllLevels
 }
 

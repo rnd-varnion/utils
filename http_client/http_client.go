@@ -5,11 +5,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/rnd-varnion/utils/logger"
+	"github.com/sirupsen/logrus"
 )
+
+var Log *logrus.Logger
+
+func init() {
+	isUseLogstash := os.Getenv(logger.LOG_API_USE_LOGSTASH) == "true"
+	Log = logger.InitCustomLogger("api_request", "info", isUseLogstash)
+}
 
 type RequestConfig struct {
 	Method     string
@@ -49,7 +57,7 @@ func DoRequestWithLog(cfg RequestConfig) (*ResponseResult, error) {
 	resp, err := client.Do(req)
 
 	duration := time.Since(start)
-	entry := logger.ApiRequestLog.WithFields(logrus.Fields{
+	entry := Log.WithFields(logrus.Fields{
 		"method": req.Method,
 		"url":    req.URL.String(),
 		"request": logrus.Fields{
