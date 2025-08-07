@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rnd-varnion/utils/authentication"
+	"github.com/rnd-varnion/utils/redis"
 	"github.com/rnd-varnion/utils/tools"
 )
 
@@ -68,10 +69,46 @@ func Authentication() gin.HandlerFunc {
 			return
 		}
 
+		_, err = redis.RedisClient0.Get(c, claims.UserID.String()).Result()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, tools.Response{
+				Status:  "Unauthorized",
+				Message: "Invalid Token",
+			})
+			return
+		}
+
 		// Store claims in context
 		c.Set(authentication.UserIDKey, claims.UserID.String())
 
 		// Validate Success
+		c.Next()
+	}
+}
+
+func InternalOnlyAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get internal token from header
+		internalToken := c.GetHeader("X-Internal-Token")
+		if internalToken == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, tools.Response{
+				Status:  "Unauthorized",
+				Message: "Internal token is required",
+			})
+			return
+		}
+
+		// Validate internal token
+		_, err := tools.ValidateInternalToken(internalToken)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, tools.Response{
+				Status:  "Unauthorized",
+				Message: "Invalid or expired internal token",
+			})
+			return
+		}
+
+		c.Set(authentication.IsFromInternalKey, true)
 		c.Next()
 	}
 }
