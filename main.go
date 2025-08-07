@@ -8,8 +8,8 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/rnd-varnion/utils/elastic"
 	"github.com/rnd-varnion/utils/influx"
 	mongoPing "github.com/rnd-varnion/utils/mongo"

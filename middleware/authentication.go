@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rnd-varnion/utils/authentication"
+	"github.com/rnd-varnion/utils/redis"
 	"github.com/rnd-varnion/utils/tools"
 )
 
@@ -64,6 +65,15 @@ func Authentication() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, tools.Response{
 				Status:  "Unauthorized",
 				Message: "Invalid or expired token",
+			})
+			return
+		}
+
+		_, err = redis.RedisClient0.Get(c, claims.UserID.String()).Result()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, tools.Response{
+				Status:  "Unauthorized",
+				Message: "Invalid Token",
 			})
 			return
 		}
