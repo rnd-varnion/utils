@@ -51,7 +51,7 @@ func NewStorage() (*Storage, error) {
 	return storage, nil
 }
 
-func (s *Storage) UploadFile(ctx context.Context, payload UploadPayload) error {
+func (s *Storage) UploadFile(ctx context.Context, payload *UploadPayload) error {
 	filePath := fmt.Sprintf("%s/%s", payload.Folder, payload.Filename)
 
 	_, err := s.MinioClient.PutObject(
