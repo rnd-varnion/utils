@@ -94,3 +94,41 @@ func DoRequestWithLog(cfg RequestConfig) (*ResponseResult, error) {
 		Headers:    resp.Header,
 	}, nil
 }
+
+func DoRequest(cfg RequestConfig) (*ResponseResult, error) {
+	timeout := 5 * time.Second
+	if cfg.TimeoutSec > 0 {
+		timeout = time.Duration(cfg.TimeoutSec) * time.Second
+	}
+
+	client := &http.Client{
+		Timeout: timeout,
+	}
+
+	req, err := http.NewRequest(cfg.Method, cfg.URL, bytes.NewBuffer(cfg.Body))
+	if err != nil {
+		return nil, fmt.Errorf("failed create request: %w", err)
+	}
+
+	for key, val := range cfg.Headers {
+		req.Header.Set(key, val)
+	}
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed http request: %w", err)
+	}
+
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed read body: %w", err)
+	}
+
+	return &ResponseResult{
+		StatusCode: resp.StatusCode,
+		Body:       respBody,
+		Headers:    resp.Header,
+	}, nil
+}
