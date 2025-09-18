@@ -25,6 +25,7 @@ type RequestConfig struct {
 	Headers    map[string]string
 	Body       []byte
 	TimeoutSec int
+	Transport  *http.Transport
 }
 
 type ResponseResult struct {
@@ -40,7 +41,8 @@ func DoRequestWithLog(cfg RequestConfig) (*ResponseResult, error) {
 	}
 
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: cfg.Transport,
 	}
 
 	start := time.Now()
@@ -102,7 +104,8 @@ func DoRequest(cfg RequestConfig) (*ResponseResult, error) {
 	}
 
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: cfg.Transport,
 	}
 
 	req, err := http.NewRequest(cfg.Method, cfg.URL, bytes.NewBuffer(cfg.Body))
