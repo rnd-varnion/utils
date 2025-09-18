@@ -25,7 +25,7 @@ type RequestConfig struct {
 	Headers    map[string]string
 	Body       []byte
 	TimeoutSec int
-	Transport  *http.Transport
+	Transport  http.RoundTripper
 }
 
 type ResponseResult struct {
