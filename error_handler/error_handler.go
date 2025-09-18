@@ -2,6 +2,7 @@ package error_handler
 
 import (
 	"net/http"
+	"os"
 	"runtime"
 
 	"github.com/gin-gonic/gin"
@@ -17,9 +18,14 @@ func HandleError(c *gin.Context, code int, err error) {
 		}
 		logger.Log.WithField("func", funcName).Error(err)
 
+		msg := err.Error()
+		if os.Getenv("MODE") == "release" {
+			msg = "Internal Server Error"
+		}
+
 		c.AbortWithStatusJSON(code, tools.Response{
 			Status:  "error",
-			Message: "Internal Server Error",
+			Message: msg,
 		})
 		return
 	}
