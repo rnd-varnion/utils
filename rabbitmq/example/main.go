@@ -72,6 +72,17 @@ func main() {
 	}
 	fmt.Println("Published:", string(b))
 
+	// Publish a delay message to vhost "/" and queue "data"
+	err = rabbit.PublishWithDelay(rabbitmq.PublishConfig{
+		Vhost:   "/",
+		Queue:   "data",
+		Message: string(b),
+	}, 5*time.Second)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Published:", string(b))
+
 	// Keep alive
 	select {}
 }

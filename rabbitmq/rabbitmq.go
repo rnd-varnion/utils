@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/RichardKnop/machinery/v2"
 	amqpbackend "github.com/RichardKnop/machinery/v2/backends/amqp"
@@ -116,6 +117,29 @@ func (e *Engine) Publish(cfg PublishConfig) error {
 		Args: []tasks.Arg{
 			{Type: "string", Value: cfg.Message},
 		},
+	}
+
+	_, err = srv.SendTask(&task)
+	if err != nil {
+		return fmt.Errorf("failed to publish task: %w", err)
+	}
+	return nil
+}
+
+func (e *Engine) PublishWithDelay(cfg PublishConfig, delay time.Duration) error {
+	srv, err := e.getServer(cfg.Vhost, cfg.Queue)
+	if err != nil {
+		return err
+	}
+
+	eta := time.Now().Add(delay)
+
+	task := tasks.Signature{
+		Name: cfg.Queue,
+		Args: []tasks.Arg{
+			{Type: "string", Value: cfg.Message},
+		},
+		ETA: &eta,
 	}
 
 	_, err = srv.SendTask(&task)
