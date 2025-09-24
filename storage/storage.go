@@ -34,7 +34,7 @@ type UploadPayload struct {
 }
 
 func NewStorage() (*Storage, error) {
-	caCertPath := os.Getenv("CA_CERT_PATH")
+	caCertPath := os.Getenv("MINIO_PATH_CERT")
 	endpoint := os.Getenv(MINIO_ENDPOINT)
 	accessKeyID := os.Getenv(MINIO_ACCESS_KEY)
 	secretAccessKey := os.Getenv(MINIO_SECRET_KEY)
@@ -47,7 +47,7 @@ func NewStorage() (*Storage, error) {
 
 	if caCertPath == "" {
 		// No CA → skip verification
-		logger.Log.Info("No CA_CERT_PATH set, using TLS but skipping verification")
+		logger.Log.Info("No MINIO_PATH_CERT set, using TLS but skipping verification")
 		tlsConfig := &tls.Config{InsecureSkipVerify: true} // dev only!
 		transport = http.DefaultTransport.(*http.Transport).Clone()
 		transport.TLSClientConfig = tlsConfig
