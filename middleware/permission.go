@@ -85,20 +85,21 @@ func PermissionBulk(payload []permission.BulkPayload) gin.HandlerFunc {
 		}
 
 		// Logic Permission
-		permissionHeader := c.GetHeader("Permission-Token")
-		if permissionHeader == "" {
+		userSessionData := c.GetString(authentication.SessionKey)
+		if userSessionData == "" {
 			c.AbortWithStatusJSON(http.StatusForbidden, tools.Response{
 				Status:  "Forbidden",
-				Message: "Permission token is required",
+				Message: "Session not found",
 			})
 			return
 		}
 
-		permissionClaim, err := tools.ValidatePermissionToken(permissionHeader)
+		var userSession authentication.UserSession
+		err := json.Unmarshal([]byte(userSessionData), &userSession)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusForbidden, tools.Response{
 				Status:  "Forbidden",
-				Message: "Invalid or expired permission token",
+				Message: "Failed to bind user session data",
 			})
 			return
 		}
@@ -106,7 +107,7 @@ func PermissionBulk(payload []permission.BulkPayload) gin.HandlerFunc {
 		// Check if the required app, menu, and permission exist in the claims
 		hasPermission := false
 		for _, payloadItem := range payload {
-			for _, permToken := range permissionClaim.Data {
+			for _, permToken := range userSession.Permissions {
 				if strings.EqualFold(permToken.AppName, payloadItem.App) {
 					for _, menuItem := range permToken.Menus {
 						if strings.EqualFold(menuItem.MenuName, payloadItem.Menu) {
