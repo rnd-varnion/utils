@@ -24,15 +24,56 @@ type ConsumeConfig struct {
 	Queue string
 }
 
+type ConsumeAckConfig struct {
+	Vhost         string
+	Queue         string
+	PrefetchCount int // Number of unacknowledged messages allowed
+}
+
 type PublishConfig struct {
 	Vhost   string
 	Queue   string
 	Message string
 }
 
+// Message represents a message with manual acknowledgment capability
+type Message struct {
+	Body        string
+	DeliveryTag uint64
+	ack         func() error
+	nack        func(requeue bool) error
+}
+
+// Ack acknowledges the message
+func (m *Message) Ack() error {
+	if m.ack == nil {
+		return fmt.Errorf("ack function not available")
+	}
+	return m.ack()
+}
+
+// Nack negatively acknowledges the message
+func (m *Message) Nack(requeue bool) error {
+	if m.nack == nil {
+		return fmt.Errorf("nack function not available")
+	}
+	return m.nack(requeue)
+}
+
+// Reject rejects the message (same as Nack with requeue=false)
+func (m *Message) Reject() error {
+	return m.Nack(false)
+}
+
+// Requeue rejects and requeues the message
+func (m *Message) Requeue() error {
+	return m.Nack(true)
+}
+
 type Engine struct {
 	cfg     NewConfig
 	servers map[string]*machinery.Server
+	workers map[string]*machinery.Worker
 	mu      sync.Mutex
 }
 
@@ -40,13 +81,14 @@ func New(cfg NewConfig) *Engine {
 	return &Engine{
 		cfg:     cfg,
 		servers: make(map[string]*machinery.Server),
+		workers: make(map[string]*machinery.Worker),
 	}
 }
 
-func (e *Engine) getServer(vhost, queue string) (*machinery.Server, error) {
+func (e *Engine) getServer(vhost, queue string, prefetchCount int) (*machinery.Server, error) {
 	setLog()
 
-	key := fmt.Sprintf("%s:%s", vhost, queue)
+	key := fmt.Sprintf("%s:%s:%d", vhost, queue, prefetchCount)
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -58,6 +100,10 @@ func (e *Engine) getServer(vhost, queue string) (*machinery.Server, error) {
 	rabbitURL := fmt.Sprintf("amqp://%s:%s@%s/%s",
 		e.cfg.Username, e.cfg.Password, e.cfg.Host, vhost)
 
+	if prefetchCount <= 0 {
+		prefetchCount = 1
+	}
+
 	cnf := &machineryConfig.Config{
 		Broker:        rabbitURL,
 		DefaultQueue:  queue,
@@ -66,7 +112,7 @@ func (e *Engine) getServer(vhost, queue string) (*machinery.Server, error) {
 			Exchange:      queue,
 			ExchangeType:  "direct",
 			BindingKey:    queue,
-			PrefetchCount: 1,
+			PrefetchCount: prefetchCount,
 		},
 	}
 
@@ -79,35 +125,145 @@ func (e *Engine) getServer(vhost, queue string) (*machinery.Server, error) {
 	return srv, nil
 }
 
+// Consume returns a channel that receives messages (auto-ack)
 func (e *Engine) Consume(cfg ConsumeConfig) (<-chan string, error) {
 	setLog()
 
-	srv, err := e.getServer(cfg.Vhost, cfg.Queue)
+	srv, err := e.getServer(cfg.Vhost, cfg.Queue, 1)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(chan string)
+	out := make(chan string, 1000)
 
 	err = srv.RegisterTask(cfg.Queue, func(msg string) error {
-		go func(m string) { out <- m }(msg)
+		out <- msg
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to register task: %w", err)
 	}
 
+	workerName := fmt.Sprintf("worker-%s-%s", cfg.Vhost, cfg.Queue)
+	worker := srv.NewWorker(workerName, 0)
+
 	go func() {
-		worker := srv.NewWorker("", 0)
 		if err := worker.Launch(); err != nil {
 			fmt.Printf("worker error on queue %s: %v\n", cfg.Queue, err)
+			close(out)
 		}
 	}()
+
+	e.mu.Lock()
+	e.workers[fmt.Sprintf("%s:%s", cfg.Vhost, cfg.Queue)] = worker
+	e.mu.Unlock()
+
+	return out, nil
+}
+
+// ConsumeAck returns a channel that receives messages requiring manual acknowledgment
+func (e *Engine) ConsumeAck(cfg ConsumeAckConfig) (<-chan *Message, error) {
+	setLog()
+
+	if cfg.PrefetchCount <= 0 {
+		cfg.PrefetchCount = 1
+	}
+
+	srv, err := e.getServer(cfg.Vhost, cfg.Queue, cfg.PrefetchCount)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan *Message, cfg.PrefetchCount)
+	ackMap := &sync.Map{} // Store acknowledgment functions by delivery tag
+
+	var deliveryCounter uint64
+	var counterMu sync.Mutex
+
+	err = srv.RegisterTask(cfg.Queue, func(msg string) error {
+		counterMu.Lock()
+		deliveryCounter++
+		currentTag := deliveryCounter
+		counterMu.Unlock()
+
+		ackChan := make(chan error, 1)
+		nackChan := make(chan struct {
+			requeue bool
+			err     error
+		}, 1)
+
+		message := &Message{
+			Body:        msg,
+			DeliveryTag: currentTag,
+			ack: func() error {
+				ackChan <- nil
+				return <-ackChan
+			},
+			nack: func(requeue bool) error {
+				nackChan <- struct {
+					requeue bool
+					err     error
+				}{requeue: requeue}
+				result := <-nackChan
+				return result.err
+			},
+		}
+
+		ackMap.Store(currentTag, struct {
+			ackChan  chan error
+			nackChan chan struct {
+				requeue bool
+				err     error
+			}
+		}{ackChan: ackChan, nackChan: nackChan})
+
+		out <- message
+
+		// Wait for ack or nack
+		select {
+		case <-ackChan:
+			ackMap.Delete(currentTag)
+			ackChan <- nil
+			return nil
+		case nackInfo := <-nackChan:
+			ackMap.Delete(currentTag)
+			if nackInfo.requeue {
+				nackChan <- struct {
+					requeue bool
+					err     error
+				}{err: nil}
+				return fmt.Errorf("message requeued")
+			}
+			nackChan <- struct {
+				requeue bool
+				err     error
+			}{err: nil}
+			return fmt.Errorf("message rejected")
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to register task: %w", err)
+	}
+
+	workerName := fmt.Sprintf("worker-manual-%s-%s", cfg.Vhost, cfg.Queue)
+	worker := srv.NewWorker(workerName, 0)
+
+	go func() {
+		if err := worker.Launch(); err != nil {
+			fmt.Printf("worker error on queue %s: %v\n", cfg.Queue, err)
+			close(out)
+		}
+	}()
+
+	e.mu.Lock()
+	e.workers[fmt.Sprintf("manual:%s:%s", cfg.Vhost, cfg.Queue)] = worker
+	e.mu.Unlock()
+
 	return out, nil
 }
 
 func (e *Engine) Publish(cfg PublishConfig) error {
-	srv, err := e.getServer(cfg.Vhost, cfg.Queue)
+	srv, err := e.getServer(cfg.Vhost, cfg.Queue, 1)
 	if err != nil {
 		return err
 	}
@@ -127,7 +283,7 @@ func (e *Engine) Publish(cfg PublishConfig) error {
 }
 
 func (e *Engine) PublishWithDelay(cfg PublishConfig, delay time.Duration) error {
-	srv, err := e.getServer(cfg.Vhost, cfg.Queue)
+	srv, err := e.getServer(cfg.Vhost, cfg.Queue, 1)
 	if err != nil {
 		return err
 	}
@@ -147,4 +303,27 @@ func (e *Engine) PublishWithDelay(cfg PublishConfig, delay time.Duration) error 
 		return fmt.Errorf("failed to publish task: %w", err)
 	}
 	return nil
+}
+
+// Shutdown gracefully shuts down all workers
+func (e *Engine) Shutdown() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for key, worker := range e.workers {
+		worker.Quit()
+		fmt.Printf("Shut down worker: %s\n", key)
+	}
+
+	return nil
+}
+
+// CloseServer removes a server from the cache
+func (e *Engine) CloseServer(vhost, queue string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s", vhost, queue)
+	delete(e.servers, key)
+	delete(e.workers, key)
 }
