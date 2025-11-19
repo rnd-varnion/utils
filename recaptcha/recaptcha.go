@@ -68,23 +68,20 @@ func New(enable bool, key string) {
 	recaptchaSecretKey = key
 }
 
-type Form struct {
-	RecaptchaResponse string `form:"g-recaptcha-response" json:"g-recaptcha-response"`
-}
-
-func (f *Form) Validate() error {
+func Validate(token string) error {
 	if recaptchaEnable {
 		if recaptchaSecretKey == "" {
 			return errors.New("invalid recaptcha configuration")
 		}
 
-		if len(f.RecaptchaResponse) == 0 {
-			return errors.New("invalid g-recaptcha-response parameter")
+		if len(token) == 0 {
+			return errors.New("invalid recaptcha token")
 		}
-		ok, err := confirm(f.RecaptchaResponse)
+
+		ok, err := confirm(token)
 		if !ok {
 			if err != nil {
-				return errors.New(err.Error())
+				return err
 			}
 			return errors.New("recaptcha failed, please try again")
 		}

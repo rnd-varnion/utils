@@ -8,15 +8,19 @@ import (
 	"github.com/rnd-varnion/utils/recaptcha"
 )
 
+type RecaptchaForm struct {
+	RecaptchaResponse string `form:"g-recaptcha-response" json:"g-recaptcha-response"`
+}
+
 type AuthRequest struct {
-	Key            string `json:"key" binding:"required"`
-	Password       string `json:"password" binding:"required"`
-	Type           string `json:"type"`
-	recaptcha.Form        // Add recaptcha form fields
+	Key           string           `json:"key" binding:"required"`
+	Password      string           `json:"password" binding:"required"`
+	Type          string           `json:"type"`
+	RecaptchaForm `json:",inline"` // Add recaptcha form fields
 }
 
 func main() {
-	// Initialize reCAPTCHA (enable it and set your secret key)
+	// Initialize reCAPTCHA (enable it (can be config driven) and set your secret key)
 	recaptcha.New(true, "YOUR_RECAPTCHA_SECRET_KEY")
 
 	http.HandleFunc("/login", handleAuth)
@@ -38,7 +42,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate reCAPTCHA
-	if err := req.Validate(); err != nil {
+	if err := recaptcha.Validate(req.RecaptchaResponse); err != nil {
 		http.Error(w, fmt.Sprintf("recaptcha validation failed: %v", err), http.StatusForbidden)
 		return
 	}
