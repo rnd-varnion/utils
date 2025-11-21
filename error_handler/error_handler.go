@@ -35,3 +35,10 @@ func HandleError(c *gin.Context, code int, err error) {
 		Message: err.Error(),
 	})
 }
+
+func HandleErrors(c *gin.Context, code int, errs map[string]interface{}) {
+	c.AbortWithStatusJSON(code, tools.Response{
+		Status:   "error",
+		Messages: errs,
+	})
+}
