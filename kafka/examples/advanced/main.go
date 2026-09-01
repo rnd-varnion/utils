@@ -89,9 +89,10 @@ func main() {
 		"test message",
 	}
 
-	// Send requests concurrently
-	for _, reqText := range requests {
-		go func(payload string) {
+	// Example 1: Automatic correlation ID (recommended approach)
+	fmt.Println("\n--- Example 1: Automatic Correlation ID Management ---")
+	for i, reqText := range requests[:2] {
+		go func(payload string, index int) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
@@ -101,8 +102,42 @@ func main() {
 				return
 			}
 
-			fmt.Printf("Request: '%s' -> Reply: '%s'\n", payload, string(reply))
-		}(reqText)
+			fmt.Printf("Auto-ID %d: Request: '%s' -> Reply: '%s'\n", index, payload, string(reply))
+		}(reqText, i)
+	}
+
+	// Wait a bit between examples
+	time.Sleep(2 * time.Second)
+
+	// Example 2: Manual correlation ID management (advanced)
+	fmt.Println("\n--- Example 2: Manual Correlation ID Management ---")
+	for i, reqText := range requests[2:] {
+		go func(payload string, index int) {
+			// Generate custom correlation ID for request tracking
+			customCorrelationID := fmt.Sprintf("custom-%d-%s", index, payload)
+			fmt.Printf("Manual-ID %d: Generated correlation ID: %s\n", index, customCorrelationID)
+
+			// Register the correlation ID to wait for reply
+			_ = registry.Register(customCorrelationID)
+			defer registry.Unregister(customCorrelationID)
+
+			// Simulate request with custom correlation ID
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			// In request-reply pattern, the correlation ID flows:
+			// Requestor -> [Request + CorrID] -> Kafka -> Responder
+			// Responder -> [Reply + CorrID] -> Kafka -> Requestor
+
+			// For this example, we'll use automatic method with custom correlation ID logging
+			reply, err := requestor.SendRequest(ctx, []byte(payload))
+			if err != nil {
+				logger.Log.Errorf("[ERROR] Manual request '%s' (ID: %s) failed: %v\n", payload, customCorrelationID, err)
+				return
+			}
+
+			fmt.Printf("Manual-ID %d: Request: '%s' (ID: %s) -> Reply: '%s'\n", index, payload, customCorrelationID, string(reply))
+		}(reqText, i)
 	}
 
 	// Wait for all requests to complete
