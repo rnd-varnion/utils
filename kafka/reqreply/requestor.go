@@ -71,14 +71,15 @@ func (r *Requestor) Start() error {
 	return nil
 }
 
-// SendRequest sends a request and waits for a reply
-func (r *Requestor) SendRequest(ctx context.Context, payload []byte) ([]byte, error) {
+// SendRequestWithID sends a request using a custom correlation ID and waits for a reply
+func (r *Requestor) SendRequestWithID(ctx context.Context, correlationID string, payload []byte) ([]byte, error) {
 	if r.registry == nil {
 		return nil, fmt.Errorf("correlation registry not initialized")
 	}
 
-	// Generate correlation ID
-	correlationID := r.registry.GenerateCorrelationID()
+	if correlationID == "" {
+		correlationID = r.registry.GenerateCorrelationID()
+	}
 
 	// Register the request with correlation ID
 	_ = r.registry.Register(correlationID)
@@ -98,7 +99,7 @@ func (r *Requestor) SendRequest(ctx context.Context, payload []byte) ([]byte, er
 		Key:   []byte(correlationID),
 		Value: payload,
 		Headers: []kgo.RecordHeader{
-			{Key: "correlation_id", Value: []byte(correlationID)},
+			{Key: "correlationId", Value: []byte(correlationID)},
 		},
 	}
 
@@ -127,6 +128,11 @@ func (r *Requestor) SendRequest(ctx context.Context, payload []byte) ([]byte, er
 	return reply.Payload, nil
 }
 
+// SendRequest sends a request with an automatically generated correlation ID
+func (r *Requestor) SendRequest(ctx context.Context, payload []byte) ([]byte, error) {
+	return r.SendRequestWithID(ctx, "", payload)
+}
+
 // consumeReplies continuously consumes replies from the reply topic
 func (r *Requestor) consumeReplies() {
 	logger.Log.Info("[INFO] Starting reply consumer goroutine")
@@ -153,7 +159,7 @@ func (r *Requestor) consumeReplies() {
 				// Extract correlation ID from headers
 				var correlationID string
 				for _, header := range record.Headers {
-					if header.Key == "correlation_id" {
+					if header.Key == "correlationId" || header.Key == "correlation_id" {
 						correlationID = string(header.Value)
 						break
 					}
