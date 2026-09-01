@@ -43,7 +43,7 @@ func main() {
 		defer topicManager.Close()
 	}
 
-	// Simple example: Send a request and wait for reply
+	// Simple example: Send a request and wait for reply with correlation ID management
 	fmt.Println("=== Simple Request-Reply Example ===")
 
 	// Create requestor
@@ -57,7 +57,8 @@ func main() {
 	// Give time for consumer to be ready
 	time.Sleep(2 * time.Second)
 
-	// Send a request
+	// Example 1: Simple request with automatic correlation ID (recommended)
+	fmt.Println("\n--- Example 1: Automatic Correlation ID ---")
 	requestPayload := []byte("hello from requestor")
 	fmt.Printf("Sending request: %s\n", string(requestPayload))
 
@@ -66,9 +67,27 @@ func main() {
 		logger.Log.Errorf("[ERROR] Request failed: %v\n", err)
 		os.Exit(1)
 	}
-
 	fmt.Printf("Received reply: %s\n", string(replyPayload))
-	fmt.Println("=== Example Complete ===")
+
+	// Example 2: Manual correlation ID management (advanced usage)
+	fmt.Println("\n--- Example 2: Manual Correlation ID Management ---")
+
+	// Generate and register correlation ID manually
+	customCorrelationID := registry.GenerateCorrelationID()
+	fmt.Printf("Generated custom correlation ID: %s\n", customCorrelationID)
+
+	// Register the correlation ID
+	_ = registry.Register(customCorrelationID)
+	defer registry.Unregister(customCorrelationID)
+
+	// In a real scenario, you would use this correlation ID when sending the request
+	// and then wait for the reply on the replyChan
+	fmt.Printf("Correlation ID %s registered, ready to send request\n", customCorrelationID)
+
+	// For demonstration, we'll use the automatic method which handles all the plumbing
+	fmt.Println("Note: Automatic method recommended for production use")
+
+	fmt.Println("\n=== Example Complete ===")
 
 	// Wait a bit to ensure all messages are processed
 	time.Sleep(2 * time.Second)
