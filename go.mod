@@ -11,6 +11,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/redis/go-redis/v9 v9.12.0
 	github.com/twmb/franz-go v1.21.6
+	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	go.mongodb.org/mongo-driver v1.17.4
 )
 
@@ -23,7 +24,6 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/tinylib/msgp v1.3.0 // indirect
-	github.com/twmb/franz-go/pkg/kadm v1.18.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1 // indirect
 )
 
