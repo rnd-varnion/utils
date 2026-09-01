@@ -32,6 +32,15 @@ The library automatically loads configuration from environment variables:
 | `KAFKA_CA_CERT` | Path to CA certificate (optional) | - |
 | `KAFKA_SASL_MECHANISM` | SASL mechanism (`sha256`/`sha512`) | `sha256` |
 
+## 📂 Runnable Examples
+
+Complete, copy-paste-ready code examples can be found in the [`examples/`](./examples) directory:
+
+- 🚀 **[All-in-One Runnable Demo](./examples/reqreply/basic/main.go)** (`go run ./kafka/examples/reqreply/basic`): Single-binary demo showing end-to-end request-reply, timeouts, error handling, and concurrency.
+- ⚡ **[Responder Service](./examples/reqreply/responder/main.go)** (`go run ./kafka/examples/reqreply/responder`): Standalone worker microservice handling requests.
+- 📡 **[Requestor Client](./examples/reqreply/requestor/main.go)** (`go run ./kafka/examples/reqreply/requestor`): Standalone caller microservice sending requests.
+- 📖 **[Examples Guide](./examples/README.md)**: Detailed architecture diagram and step-by-step tutorial.
+
 ## 🚀 Quick Start
 
 ### Basic Request-Reply Pattern

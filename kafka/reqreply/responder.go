@@ -102,7 +102,7 @@ func (r *Responder) consumeRequests() {
 				// Extract correlation ID from headers
 				var correlationID string
 				for _, header := range record.Headers {
-					if header.Key == "correlation_id" {
+					if header.Key == "correlationId" || header.Key == "correlation_id" {
 						correlationID = string(header.Value)
 						break
 					}
@@ -167,7 +167,7 @@ func (r *Responder) sendReply(correlationID string, payload []byte, err error) {
 		Key:   []byte(correlationID),
 		Value: replyValue,
 		Headers: []kgo.RecordHeader{
-			{Key: "correlation_id", Value: []byte(correlationID)},
+			{Key: "correlationId", Value: []byte(correlationID)},
 		},
 	}
 

@@ -61,15 +61,25 @@ func NewClient(config *common.Config) (*Client, error) {
 		producerOpts = append(producerOpts, kgo.DialTLSConfig(tlsConfig))
 	}
 
-	// Create consumer opts (similar to producer but with different client ID)
-	consumerOpts := make([]kgo.Opt, len(producerOpts))
-	copy(consumerOpts, producerOpts)
+	// Create consumer opts
+	consumerOpts := []kgo.Opt{
+		kgo.SeedBrokers(config.Brokers...),
+		kgo.ClientID(config.ClientID + "-consumer"),
+		kgo.ProduceRequestTimeout(10 * time.Second),
+		kgo.ProducerBatchCompression(kgo.SnappyCompression()),
+	}
 
-	// Find and replace client ID for consumer
-	for i, opt := range consumerOpts {
-		if clientIDOpt, ok := opt.(interface{ ClientID(string) kgo.Opt }); ok && i == 1 {
-			consumerOpts[i] = clientIDOpt.ClientID(config.ClientID + "-consumer")
-			break
+	if config.CACertPath != "" {
+		caCert, err := os.ReadFile(config.CACertPath)
+		if err == nil {
+			caCertPool := x509.NewCertPool()
+			caCertPool.AppendCertsFromPEM(caCert)
+
+			tlsConfig := &tls.Config{
+				RootCAs:    caCertPool,
+				MinVersion: tls.VersionTLS12,
+			}
+			consumerOpts = append(consumerOpts, kgo.DialTLSConfig(tlsConfig))
 		}
 	}
 
