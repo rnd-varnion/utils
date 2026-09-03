@@ -11,6 +11,8 @@ import (
 	"github.com/rnd-varnion/utils/kafka/common"
 	"github.com/rnd-varnion/utils/logger"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/sasl"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 )
 
 // Client represents a Kafka client for request-reply operations
@@ -28,6 +30,12 @@ func NewClient(config *common.Config) (*Client, error) {
 
 	logger.Log.Infof("[INFO] Creating Kafka client for brokers: %v\n", config.Brokers)
 
+	// Build SASL mechanism if credentials are configured
+	var saslMech sasl.Mechanism
+	if config.Username != "" && config.Password != "" {
+		saslMech = buildSASLMechanism(config)
+	}
+
 	// Create producer opts
 	producerOpts := []kgo.Opt{
 		kgo.SeedBrokers(config.Brokers...),
@@ -36,11 +44,8 @@ func NewClient(config *common.Config) (*Client, error) {
 		kgo.ProducerBatchCompression(kgo.SnappyCompression()),
 	}
 
-	// Add SASL authentication if configured
-	if config.Username != "" && config.Password != "" {
-		// For now, skip SASL configuration - this requires proper implementation
-		// TODO: Implement proper SASL authentication with franz-go
-		logger.Log.Warn("[WARN] SASL authentication requested but not yet implemented")
+	if saslMech != nil {
+		producerOpts = append(producerOpts, kgo.SASL(saslMech))
 	}
 
 	// Add TLS if configured
@@ -67,6 +72,10 @@ func NewClient(config *common.Config) (*Client, error) {
 		kgo.ClientID(config.ClientID + "-consumer"),
 		kgo.ProduceRequestTimeout(10 * time.Second),
 		kgo.ProducerBatchCompression(kgo.SnappyCompression()),
+	}
+
+	if saslMech != nil {
+		consumerOpts = append(consumerOpts, kgo.SASL(saslMech))
 	}
 
 	if config.CACertPath != "" {
@@ -106,6 +115,16 @@ func NewClient(config *common.Config) (*Client, error) {
 
 	logger.Log.Infof("[INFO] Kafka client created successfully\n")
 	return client, nil
+}
+
+// buildSASLMechanism returns the SCRAM-SHA-512 mechanism. The broker only
+// supports SCRAM-SHA-512 over a plaintext listener, so TLS is not required
+// for SASL authentication.
+func buildSASLMechanism(config *common.Config) sasl.Mechanism {
+	return scram.Auth{
+		User: config.Username,
+		Pass: config.Password,
+	}.AsSha512Mechanism()
 }
 
 // GetProducer returns the producer client
