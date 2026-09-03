@@ -2,11 +2,13 @@ package reqreply
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/rnd-varnion/utils/logger"
-	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 // TopicManager handles Kafka topic management operations
@@ -57,7 +59,11 @@ func (tm *TopicManager) CreateTopic(ctx context.Context, topic string) error {
 	}
 
 	// If topic exists, log and return
-	if _, exists := topicsDetails[topic]; exists {
+	//
+	// Note: kadm includes requested-but-missing topics in the details map with
+	// Err set (e.g. ErrUnknownTopicOrPartition), so key presence alone is not
+	// sufficient — a topic only exists if its Err is nil.
+	if detail, exists := topicsDetails[topic]; exists && detail.Err == nil {
 		logger.Log.Infof("[INFO] Topic '%s' already exists\n", topic)
 		return nil
 	}
@@ -67,14 +73,23 @@ func (tm *TopicManager) CreateTopic(ctx context.Context, topic string) error {
 		topic, tm.partitions, tm.replicationFactor)
 
 	// Use CreateTopics with proper parameters
-	_, err = tm.admin.CreateTopics(ctx, tm.partitions, tm.replicationFactor, nil, topic)
+	resp, err := tm.admin.CreateTopics(ctx, tm.partitions, tm.replicationFactor, nil, topic)
 	if err != nil {
-		// Check if it's a "topic already exists" error (idempotent)
-		if isTopicAlreadyExistsError(err) {
+		return fmt.Errorf("failed to create topic '%s': %w", topic, err)
+	}
+
+	// Check the per-topic response for errors (responses are a slice)
+	for _, ct := range resp {
+		if ct.Err == nil {
+			continue
+		}
+		// A TOPIC_ALREADY_EXISTS error means another process beat us to it —
+		// that's fine for an ensure operation.
+		if errors.Is(ct.Err, kerr.TopicAlreadyExists) {
 			logger.Log.Infof("[INFO] Topic '%s' already exists (idempotent creation)\n", topic)
 			return nil
 		}
-		return fmt.Errorf("failed to create topic '%s': %w", topic, err)
+		return fmt.Errorf("failed to create topic '%s': %w", topic, ct.Err)
 	}
 
 	logger.Log.Infof("[INFO] Successfully created topic '%s'\n", topic)
@@ -141,9 +156,11 @@ func (tm *TopicManager) TopicExists(ctx context.Context, topic string) (bool, er
 		return false, fmt.Errorf("failed to list topics: %w", err)
 	}
 
-	// Check if the topic exists in the details
-	_, exists := topicsDetails[topic]
-	return exists, nil
+	// Check if the topic exists in the details. kadm includes requested-but-
+	// missing topics in the map with Err set, so a topic only exists if its
+	// detail entry has a nil Err.
+	detail, exists := topicsDetails[topic]
+	return exists && detail.Err == nil, nil
 }
 
 // Close closes the topic manager and its admin client
@@ -153,34 +170,4 @@ func (tm *TopicManager) Close() error {
 		logger.Log.Info("[INFO] Topic manager closed")
 	}
 	return nil
-}
-
-// isTopicAlreadyExistsError checks if the error is due to topic already existing
-func isTopicAlreadyExistsError(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Check for common "topic already exists" error patterns
-	errStr := err.Error()
-	return contains(errStr, "topic already exists") ||
-		contains(errStr, "already exists") ||
-		contains(errStr, "Topic:")
-}
-
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		len(s) > len(substr) && (s[:len(substr)] == substr ||
-			s[len(s)-len(substr):] == substr ||
-			containsMiddle(s, substr)))
-}
-
-// containsMiddle checks if substring exists in the middle of string
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
