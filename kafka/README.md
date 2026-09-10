@@ -134,6 +134,37 @@ func main() {
 }
 ```
 
+### Service Bootstrap
+
+For services that always wire the same pieces together (client + correlation registry + topic manager), the `kafka/reqreply/service` package bundles them into one struct:
+
+```go
+package main
+
+import (
+    "github.com/rnd-varnion/utils/kafka/common"
+    kafka "github.com/rnd-varnion/utils/kafka/reqreply/service"
+)
+
+func main() {
+    config := common.LoadConfigFromEnv()
+
+    // Creates client, correlation registry (10s TTL) and topic manager
+    k, err := kafka.Init(config)
+    if err != nil {
+        panic(err)
+    }
+    defer k.Close()
+
+    // Ensure required topics exist (30s timeout, creates missing ones)
+    if err := k.EnsureTopics("data-request", "data-reply"); err != nil {
+        panic(err)
+    }
+
+    // Use k.Client / k.Registry with reqreply.NewRequestor / NewResponder...
+}
+```
+
 ### Advanced Usage Patterns
 
 #### 1. Concurrent Request Processing
