@@ -1,14 +1,15 @@
-# Kafka Request-Reply Library
+# Kafka Utility Library (Request-Reply & Event-Driven Patterns)
 
-A production-ready Kafka Request-Reply pattern implementation for Go using `franz-go`. This library simplifies building microservices that communicate via synchronous request-reply patterns over Apache Kafka.
+A production-ready Apache Kafka library for Go using `franz-go`. This library simplifies building microservices that communicate via **Synchronous Request-Reply** patterns and **Asynchronous Event-Driven (Pub/Sub)** patterns over Apache Kafka.
 
 ## 🎯 Features
 
 - **Request-Reply Pattern**: Complete correlation ID management for request/response matching
+- **Event-Driven Pattern**: Asynchronous fire-and-forget event publishing & event-type routing for subscribers
 - **Thread-Safe Registry**: Concurrent request handling with automatic cleanup
 - **Connection Management**: SASL/TLS authentication support, health checking
 - **Topic Management**: Auto-creation and validation via Kafka admin API
-- **Handler Injection**: Custom business logic processing for requests
+- **Handler Injection**: Custom business logic processing for requests and event types
 - **Consumer Groups**: Built-in consumer group management for scaling
 - **Environment Configuration**: Seamless integration with `.env` files
 - **Production Ready**: Comprehensive error handling, timeouts, and graceful shutdown
@@ -131,6 +132,41 @@ func main() {
 
     // Keep running...
     select {}
+}
+```
+
+### Event-Driven (Pub/Sub) Pattern
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/rnd-varnion/utils/kafka/common"
+    "github.com/rnd-varnion/utils/kafka/event"
+    "github.com/rnd-varnion/utils/kafka/reqreply"
+)
+
+func main() {
+    config := common.LoadConfigFromEnv()
+    client, _ := reqreply.NewClient(config)
+    defer client.Close()
+
+    // 1. Create Subscriber & Register Event Handlers
+    subscriber := event.NewSubscriber(client, []string{"user-events"}, "notification-group")
+    subscriber.RegisterHandler("user.created", func(ctx context.Context, evt *event.Event) error {
+        fmt.Printf("Received user.created event ID=%s: %s\n", evt.ID, string(evt.Payload))
+        return nil
+    })
+    _ = subscriber.Start()
+    defer subscriber.Stop()
+
+    // 2. Create Publisher & Publish Event (Fire-and-forget)
+    publisher := event.NewPublisher(client)
+    evt := event.NewEvent("user.created", "user-service", []byte(`{"user_id": 42}`))
+    _ = publisher.Publish(context.Background(), "user-events", evt)
 }
 ```
 
