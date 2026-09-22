@@ -127,6 +127,14 @@ func buildSASLMechanism(config *common.Config) sasl.Mechanism {
 	}.AsSha512Mechanism()
 }
 
+// GetConfig returns the client configuration
+func (c *Client) GetConfig() *common.Config {
+	if c == nil {
+		return nil
+	}
+	return c.config
+}
+
 // GetProducer returns the producer client
 func (c *Client) GetProducer() *kgo.Client {
 	return c.producer
