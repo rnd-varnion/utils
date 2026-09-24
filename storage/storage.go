@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	MINIO_ENDPOINT   = "MINIO_ENDPOINT"
-	MINIO_ACCESS_KEY = "MINIO_ACCESS_KEY"
-	MINIO_SECRET_KEY = "MINIO_SECRET_KEY"
-	MINIO_BUCKET     = "MINIO_BUCKET"
+	MINIO_INTERNAL_ENDPOINT = "MINIO_INTERNAL_ENDPOINT"
+	MINIO_ENDPOINT          = "MINIO_ENDPOINT"
+	MINIO_ACCESS_KEY        = "MINIO_ACCESS_KEY"
+	MINIO_SECRET_KEY        = "MINIO_SECRET_KEY"
+	MINIO_BUCKET            = "MINIO_BUCKET"
 )
 
 type Storage struct {
@@ -35,7 +36,10 @@ type UploadPayload struct {
 
 func NewStorage() (*Storage, error) {
 	caCertPath := os.Getenv("MINIO_PATH_CERT")
-	endpoint := os.Getenv(MINIO_ENDPOINT)
+	endpoint := os.Getenv(MINIO_INTERNAL_ENDPOINT)
+	if endpoint == "" {
+		endpoint = os.Getenv(MINIO_ENDPOINT)
+	}
 	accessKeyID := os.Getenv(MINIO_ACCESS_KEY)
 	secretAccessKey := os.Getenv(MINIO_SECRET_KEY)
 
