@@ -12,6 +12,7 @@ import (
 const (
 	KAFKA_BROKERS        = "KAFKA_BROKERS"
 	KAFKA_CLIENT_ID      = "KAFKA_CLIENT_ID"
+	KAFKA_CONSUMER_GROUP = "KAFKA_CONSUMER_GROUP"
 	KAFKA_USERNAME       = "KAFKA_USERNAME"
 	KAFKA_PASSWORD       = "KAFKA_PASSWORD"
 	KAFKA_CA_CERT        = "KAFKA_CA_CERT"
@@ -22,6 +23,7 @@ const (
 type Config struct {
 	Brokers        []string
 	ClientID       string
+	ConsumerGroup  string
 	Username       string
 	Password       string
 	CACertPath     string
@@ -43,6 +45,8 @@ func LoadConfigFromEnv() *Config {
 		clientID = "varnion-kafka-client"
 	}
 
+	consumerGroup := os.Getenv(KAFKA_CONSUMER_GROUP)
+
 	username := os.Getenv(KAFKA_USERNAME)
 	password := os.Getenv(KAFKA_PASSWORD)
 	caCert := os.Getenv(KAFKA_CA_CERT)
@@ -54,15 +58,16 @@ func LoadConfigFromEnv() *Config {
 
 	config := &Config{
 		Brokers:        []string{brokers},
-		ClientID:      clientID,
-		Username:      username,
-		Password:      password,
-		CACertPath:    caCert,
-		SASLMechanism: saslMechanism,
+		ClientID:       clientID,
+		ConsumerGroup:  consumerGroup,
+		Username:       username,
+		Password:       password,
+		CACertPath:     caCert,
+		SASLMechanism:  saslMechanism,
 		RequestTimeout: 10 * time.Second, // default timeout
 	}
 
-	logger.Log.Infof("[INFO] Loaded Kafka config - Brokers: %v, ClientID: %s\n", config.Brokers, config.ClientID)
+	logger.Log.Infof("[INFO] Loaded Kafka config - Brokers: %v, ClientID: %s, ConsumerGroup: %s\n", config.Brokers, config.ClientID, config.ConsumerGroup)
 
 	return config
 }
