@@ -93,6 +93,11 @@ func (r *Responder) consumeRequests() {
 
 			// Poll for records
 			fetches := r.consumer.PollRecords(context.Background(), 100)
+			if errs := fetches.Errors(); len(errs) > 0 {
+				for _, err := range errs {
+					logger.Log.Errorf("[ERROR] Kafka responder poll error on topic %s: %v\n", err.Topic, err.Err)
+				}
+			}
 			if len(fetches) == 0 {
 				continue
 			}
