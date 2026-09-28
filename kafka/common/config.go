@@ -64,7 +64,7 @@ func LoadConfigFromEnv() *Config {
 		Password:       password,
 		CACertPath:     caCert,
 		SASLMechanism:  saslMechanism,
-		RequestTimeout: 10 * time.Second, // default timeout
+		RequestTimeout: 1 * time.Second, // default timeout
 	}
 
 	logger.Log.Infof("[INFO] Loaded Kafka config - Brokers: %v, ClientID: %s, ConsumerGroup: %s\n", config.Brokers, config.ClientID, config.ConsumerGroup)
