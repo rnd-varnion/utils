@@ -74,8 +74,8 @@ func NewClient(config *common.Config) (*Client, error) {
 		kgo.ProducerBatchCompression(kgo.SnappyCompression()),
 	}
 
-	if saslMech != nil {
-		consumerOpts = append(consumerOpts, kgo.SASL(saslMech))
+	if config.ConsumerGroup != "" {
+		consumerOpts = append(consumerOpts, kgo.ConsumerGroup(config.ConsumerGroup))
 	}
 
 	if config.CACertPath != "" {
