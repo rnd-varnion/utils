@@ -28,6 +28,15 @@ func TestValidClient(t *testing.T) {
 	}
 }
 
+func TestSplitNameLeavesLastNameEmptyForSingleName(t *testing.T) {
+	t.Parallel()
+
+	firstName, lastName := splitName("Rachmat")
+	if firstName != "Rachmat" || lastName != "" {
+		t.Fatalf("splitName() = (%q, %q), want (%q, %q)", firstName, lastName, "Rachmat", "")
+	}
+}
+
 func TestExtractClaimsSplitsBusinessRoleAndPermissions(t *testing.T) {
 	c := New(AccountConfig{ClientID: "prosky-admin"})
 	claims := c.extractClaims(jwt.MapClaims{
