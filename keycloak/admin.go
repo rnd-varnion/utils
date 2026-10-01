@@ -932,7 +932,7 @@ func splitName(name string) (string, string) {
 		return "User", "Seed"
 	}
 	if len(parts) == 1 {
-		return parts[0], "Seed"
+		return parts[0], ""
 	}
 	return parts[0], strings.Join(parts[1:], " ")
 }
