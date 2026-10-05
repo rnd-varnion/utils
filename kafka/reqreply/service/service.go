@@ -24,7 +24,7 @@ func Init(config *common.Config) (*Kafka, error) {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
-	registry := reqreply.NewCorrelationRegistry(10 * time.Second)
+	registry := reqreply.NewCorrelationRegistry(3 * time.Second)
 
 	return &Kafka{
 		Client:       client,

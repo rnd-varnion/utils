@@ -30,6 +30,7 @@ type Subscriber struct {
 	mu             sync.RWMutex
 	stopChan       chan struct{}
 	running        bool
+	dlqConfig      *DeadLetterQueueConfig
 }
 
 // NewSubscriber creates a new event subscriber instance using reqreply.Client configuration
@@ -120,6 +121,32 @@ func (s *Subscriber) RegisterDefaultHandler(handler EventHandler) {
 	logger.Log.Info("[INFO] Registered default event handler")
 }
 
+// WithDeadLetterQueue configures automatic in-memory retries and DLQ forwarding on final failure.
+// If configured, failed messages will be retried up to maxRetries times with retryDelay backoff.
+// If all retries fail, the event is wrapped in a DeadLetterEnvelope and published to dlqTopic.
+// Only after DLQ dispatch succeeds will the Kafka offset be committed.
+func (s *Subscriber) WithDeadLetterQueue(
+	dlqPublisher *Publisher,
+	dlqTopic string,
+	maxRetries int,
+	retryDelay time.Duration,
+) *Subscriber {
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+	if retryDelay <= 0 {
+		retryDelay = 2 * time.Second
+	}
+
+	s.dlqConfig = &DeadLetterQueueConfig{
+		Publisher:  dlqPublisher,
+		Topic:      dlqTopic,
+		MaxRetries: maxRetries,
+		RetryDelay: retryDelay,
+	}
+	return s
+}
+
 // Start begins consuming events from subscribed topics
 func (s *Subscriber) Start() error {
 	if s.client == nil {
@@ -172,17 +199,73 @@ func (s *Subscriber) consumeLoop() {
 				}
 
 				wg.Add(1)
-				go func(e Event, h EventHandler) {
+				go func(e Event, h EventHandler, srcTopic string) {
 					defer wg.Done()
 					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer cancel()
 
-					if err := h(ctx, &e); err != nil {
-						logger.Log.Errorf("[ERROR] Handler returned error for event %s (type: %s): %v\n", e.ID, e.Type, err)
-					} else {
+					// 1. Eksekusi pertama
+					err := h(ctx, &e)
+					if err == nil {
 						logger.Log.Debugf("[DEBUG] Handled event %s (type: %s) successfully\n", e.ID, e.Type)
+						return
 					}
-				}(evt, handler)
+
+					logger.Log.Errorf("[ERROR] Handler returned error for event %s (type: %s): %v\n", e.ID, e.Type, err)
+
+					// 2. Jika DLQ tidak dikonfigurasi, gunakan perilaku lama (backward compatibility)
+					if s.dlqConfig == nil || s.dlqConfig.Publisher == nil || s.dlqConfig.Topic == "" {
+						return
+					}
+
+					// 3. Retry Loop dengan Backoff
+					var lastErr = err
+					for attempt := 1; attempt <= s.dlqConfig.MaxRetries; attempt++ {
+						select {
+						case <-ctx.Done():
+							logger.Log.Warnf("[WARN] Retry context expired for event %s: %v\n", e.ID, ctx.Err())
+							return
+						case <-time.After(s.dlqConfig.RetryDelay):
+						}
+
+						if retryErr := h(ctx, &e); retryErr == nil {
+							logger.Log.Infof("[INFO] Retry attempt %d/%d succeeded for event %s\n", attempt, s.dlqConfig.MaxRetries, e.ID)
+							return // Sukses setelah retry!
+						} else {
+							lastErr = retryErr
+							logger.Log.Warnf("[WARN] Retry attempt %d/%d failed for event %s: %v\n", attempt, s.dlqConfig.MaxRetries, e.ID, retryErr)
+						}
+					}
+
+					// 4. Seluruh percobaan gagal -> Bungkus ke DLQ Envelope & Publish
+					dlqPayload := &DeadLetterEnvelope{
+						OriginalEventID:   e.ID,
+						OriginalEventType: e.Type,
+						SourceTopic:       srcTopic,
+						ConsumerGroup:     s.consumerGroup,
+						ErrorMessage:      lastErr.Error(),
+						RetryCount:        s.dlqConfig.MaxRetries,
+						FailedAt:          time.Now().UTC().Format(time.RFC3339),
+						Payload:           json.RawMessage(e.Payload),
+						Headers:           e.Headers,
+					}
+
+					payloadBytes, marshalErr := json.Marshal(dlqPayload)
+					if marshalErr != nil {
+						logger.Log.Errorf("[CRITICAL] Failed to marshal DLQ envelope for event %s: %v\n", e.ID, marshalErr)
+						return
+					}
+
+					dlqEvt := NewEvent(e.Type+".failed", s.consumerGroup, payloadBytes)
+					dlqEvt.WithHeader("tenant_id", "varnion-nexus")
+					dlqEvt.WithHeader("failed_service", s.consumerGroup)
+
+					if pubErr := s.dlqConfig.Publisher.Publish(ctx, s.dlqConfig.Topic, dlqEvt); pubErr != nil {
+						logger.Log.Errorf("[CRITICAL] Failed to publish event %s to DLQ %s: %v\n", e.ID, s.dlqConfig.Topic, pubErr)
+					} else {
+						logger.Log.Warnf("[DLQ] Successfully forwarded failed event %s to DLQ topic: %s\n", e.ID, s.dlqConfig.Topic)
+					}
+				}(evt, handler, record.Topic)
 			})
 
 			wg.Wait()

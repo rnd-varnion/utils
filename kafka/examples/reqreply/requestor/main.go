@@ -45,7 +45,7 @@ func main() {
 	defer client.Close()
 
 	// 3. Create correlation registry
-	registry := reqreply.NewCorrelationRegistry(10 * time.Second)
+	registry := reqreply.NewCorrelationRegistry(3 * time.Second)
 	defer registry.Close()
 
 	// 4. Create and start Requestor

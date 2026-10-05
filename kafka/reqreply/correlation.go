@@ -30,7 +30,7 @@ type ReplyMessage struct {
 // NewCorrelationRegistry creates a new correlation registry
 func NewCorrelationRegistry(timeout time.Duration) *CorrelationRegistry {
 	if timeout == 0 {
-		timeout = 10 * time.Second // default timeout
+		timeout = 3 * time.Second // default timeout
 	}
 
 	registry := &CorrelationRegistry{
