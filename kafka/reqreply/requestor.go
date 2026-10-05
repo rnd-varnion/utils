@@ -27,7 +27,7 @@ func NewRequestor(client *Client, registry *CorrelationRegistry, requestTopic, r
 		return nil
 	}
 
-	timeout := 10 * time.Second // default timeout
+	timeout := 3 * time.Second // default timeout
 
 	return &Requestor{
 		client:            client,

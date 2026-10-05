@@ -146,7 +146,7 @@ func main() {
 	}
 	defer reqClient.Close()
 
-	registry := reqreply.NewCorrelationRegistry(10 * time.Second)
+	registry := reqreply.NewCorrelationRegistry(3 * time.Second)
 	defer registry.Close()
 
 	requestor := reqreply.NewRequestor(reqClient, registry, RequestTopic, ReplyTopic, GroupReq)
