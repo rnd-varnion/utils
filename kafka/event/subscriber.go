@@ -260,7 +260,12 @@ func (s *Subscriber) consumeLoop() {
 					dlqEvt.WithHeader("tenant_id", "varnion-nexus")
 					dlqEvt.WithHeader("failed_service", s.consumerGroup)
 
-					if pubErr := s.dlqConfig.Publisher.Publish(ctx, s.dlqConfig.Topic, dlqEvt); pubErr != nil {
+					// Gunakan context independen baru dengan PublishSync khusus untuk DLQ
+					// agar tidak terpengaruh oleh cancel() handler dan memastikan pesan sampai sebelum offset di-commit
+					dlqCtx, dlqCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer dlqCancel()
+
+					if pubErr := s.dlqConfig.Publisher.PublishSync(dlqCtx, s.dlqConfig.Topic, dlqEvt); pubErr != nil {
 						logger.Log.Errorf("[CRITICAL] Failed to publish event %s to DLQ %s: %v\n", e.ID, s.dlqConfig.Topic, pubErr)
 					} else {
 						logger.Log.Warnf("[DLQ] Successfully forwarded failed event %s to DLQ topic: %s\n", e.ID, s.dlqConfig.Topic)
