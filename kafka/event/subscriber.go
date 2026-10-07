@@ -186,12 +186,36 @@ func (s *Subscriber) consumeLoop() {
 					return
 				}
 
+				// Merge native Kafka headers into evt.Headers (jika belum ada di JSON payload)
+				if len(record.Headers) > 0 {
+					if evt.Headers == nil {
+						evt.Headers = make(map[string]string)
+					}
+					for _, h := range record.Headers {
+						if _, exists := evt.Headers[h.Key]; !exists {
+							evt.Headers[h.Key] = string(h.Value)
+						}
+					}
+				}
+
 				s.mu.RLock()
 				handler, exists := s.handlers[evt.Type]
 				if !exists {
 					handler = s.defaultHandler
 				}
 				s.mu.RUnlock()
+
+				if isRetry, ok := evt.Headers["is_retry"]; ok && isRetry == "true" {
+					if failedService, exists := evt.Headers["failed_service"]; exists && failedService != "" {
+						if failedService != s.consumerGroup {
+							logger.Log.Debugf("[DEBUG] Skipping retry event %s (%s) targeted for service '%s' (current: '%s')\n",
+								evt.ID, evt.Type, failedService, s.consumerGroup)
+							return
+						}
+						logger.Log.Infof("[INFO] Processing targeted retry event %s (%s) for consumer group '%s'\n",
+							evt.ID, evt.Type, s.consumerGroup)
+					}
+				}
 
 				if handler == nil {
 					logger.Log.Warnf("[WARN] No handler registered for event type: %s (ID: %s)\n", evt.Type, evt.ID)
