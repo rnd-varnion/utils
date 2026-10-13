@@ -408,32 +408,48 @@ func (c *Client) EnsureSeedUserWithAttrs(ctx context.Context, email, name, passw
 }
 
 func (c *Client) CreateUser(ctx context.Context, email, name, password, roleName string, attributes map[string][]string) error {
+	return c.CreateUserWithIdentifier(ctx, email, email, name, password, roleName, attributes)
+}
+
+func (c *Client) CreateUserWithIdentifier(ctx context.Context, username, email, name, password, roleName string, attributes map[string][]string) error {
 	_, token, err := c.adminContext(ctx)
 	if err != nil {
 		return err
 	}
-	existing, err := c.findUser(ctx, token, email)
+	if username == "" {
+		return fmt.Errorf("username is required")
+	}
+	existing, err := c.findUserByUsername(ctx, token, username)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
-		return fmt.Errorf("user already exists: %s", email)
+		return fmt.Errorf("user already exists: %s", username)
+	}
+	if email != "" && email != username {
+		byEmail, err := c.findUser(ctx, token, email)
+		if err != nil {
+			return err
+		}
+		if byEmail != nil {
+			return fmt.Errorf("user already exists: %s", email)
+		}
 	}
 	firstName, lastName := splitName(name)
 	user := User{
-		Username:      email,
+		Username:      username,
 		Email:         email,
 		FirstName:     firstName,
 		LastName:      lastName,
 		Enabled:       true,
-		EmailVerified: true,
+		EmailVerified: email != "",
 		Attributes:    attributes,
 	}
 	body, _ := JSONBody(user)
 	if _, err := c.adminRequest(ctx, http.MethodPost, c.adminEndpoint("users"), token, body); err != nil {
 		return err
 	}
-	userID, err := c.findUserID(ctx, token, email)
+	userID, err := c.findUserIDByUsername(ctx, token, username)
 	if err != nil {
 		return err
 	}
@@ -958,6 +974,38 @@ func (c *Client) findUser(ctx context.Context, token, email string) (*User, erro
 		return nil, nil
 	}
 	return &users[0], nil
+}
+
+func (c *Client) findUserByUsername(ctx context.Context, token, username string) (*User, error) {
+	body, err := c.adminRequest(ctx, http.MethodGet, c.adminEndpoint("users?username=%s&exact=true", url.QueryEscape(username)), token, nil)
+	if err != nil {
+		return nil, err
+	}
+	var users []User
+	if err := json.Unmarshal(body, &users); err != nil {
+		return nil, err
+	}
+	if len(users) == 0 {
+		return nil, nil
+	}
+	return &users[0], nil
+}
+
+func (c *Client) findUserIDByUsername(ctx context.Context, token, username string) (string, error) {
+	user, err := c.findUserByUsername(ctx, token, username)
+	if err != nil || user == nil {
+		return "", err
+	}
+	return user.ID, nil
+}
+
+// GetUserByUsername returns the user with an exact username match, or nil when not found.
+func (c *Client) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	_, token, err := c.adminContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.findUserByUsername(ctx, token, username)
 }
 
 func (c *Client) setUserClientRole(ctx context.Context, clientID, token, userID, roleName string) error {
