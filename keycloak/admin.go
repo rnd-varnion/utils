@@ -502,6 +502,23 @@ func (c *Client) ResetPasswordByEmail(ctx context.Context, email, password strin
 	return err
 }
 
+func (c *Client) ResetPasswordByUsername(ctx context.Context, username, password string) error {
+	_, token, err := c.adminContext(ctx)
+	if err != nil {
+		return err
+	}
+	userID, err := c.findUserIDByUsername(ctx, token, username)
+	if err != nil {
+		return err
+	}
+	if userID == "" {
+		return fmt.Errorf("keycloak user not found")
+	}
+	body, _ := JSONBody(Credential{Type: "password", Value: password, Temporary: false})
+	_, err = c.adminRequest(ctx, http.MethodPut, c.adminEndpoint("users/%s/reset-password", userID), token, body)
+	return err
+}
+
 func (c *Client) SetUserEnabledByEmail(ctx context.Context, email string, enabled bool) error {
 	_, token, err := c.adminContext(ctx)
 	if err != nil {
