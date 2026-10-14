@@ -772,6 +772,21 @@ func (c *Client) ConfigureUserProfile(ctx context.Context) error {
 			raw["attributes"] = append(raw["attributes"].([]interface{}), ca)
 		}
 	}
+	// email and lastName must stay optional for the "user" role: customers
+	// register with single-word names (no lastName) and phone-based customers
+	// have no email. If either stays required, Keycloak fails the password
+	// grant at login with "Account is not fully set up"
+	// (resolve_required_actions) — even though user creation succeeded.
+	// firstName stays required.
+	if attrs, ok := raw["attributes"].([]interface{}); ok {
+		for _, a := range attrs {
+			if m, ok := a.(map[string]interface{}); ok {
+				if m["name"] == "email" || m["name"] == "lastName" {
+					delete(m, "required")
+				}
+			}
+		}
+	}
 	raw["unmanagedAttributePolicy"] = "ENABLED"
 
 	// Step 4: PUT merged config.
