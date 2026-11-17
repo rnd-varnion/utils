@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Role struct {
@@ -653,19 +654,21 @@ func (c *Client) ListAllUsers(ctx context.Context, maxResults int) ([]User, erro
 	if maxResults <= 0 {
 		maxResults = 1000
 	}
-	var all []User
-	first := 0
-	pageSize := 100
-	for first < maxResults {
-		users, err := c.ListUsers(ctx, "", first, pageSize)
-		if err != nil || len(users) == 0 {
-			break
+	all, err := fetchAllPages(100, 4, func(first, max int) ([]User, error) {
+		users, err := c.ListUsers(ctx, "", first, max)
+		if err != nil {
+			return nil, err
 		}
-		all = append(all, users...)
-		if len(users) < pageSize {
-			break
+		if overflow := first + max - maxResults; overflow > 0 && len(users) > overflow {
+			users = users[:len(users)-overflow]
 		}
-		first += pageSize
+		return users, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(all) > maxResults {
+		all = all[:maxResults]
 	}
 	return all, nil
 }
@@ -806,13 +809,10 @@ type RealmTokenSettings struct {
 	SSOMaxLifespan      int // absolute session cap (default 7 days)
 }
 
-// DefaultRealmTokenSettings holds the recommended token lifespans for the
-// prosky-admin realm. Used by the seeder so a fresh realm gets sensible
-// values without manual Keycloak Admin UI configuration.
 var DefaultRealmTokenSettings = RealmTokenSettings{
-	AccessTokenLifespan: 15 * 60,       // 15 minutes
-	SSOIdleTimeout:      60 * 60,       // 60 minutes
-	SSOMaxLifespan:      7 * 24 * 3600, // 7 days
+	AccessTokenLifespan: 15 * 60,        // 15 minutes — clients refresh at ~14 min, which keeps the session alive
+	SSOIdleTimeout:      7 * 24 * 3600,  // 7 days idle (refresh use resets it)
+	SSOMaxLifespan:      30 * 24 * 3600, // 30 days hard cap, then re-login
 }
 
 // ConfigureRealmTokens applies token/session lifespan settings to the target
@@ -1078,6 +1078,11 @@ func (c *Client) adminContext(ctx context.Context) (clientID, token string, err 
 }
 
 func (c *Client) adminToken(ctx context.Context) (string, error) {
+	c.adminMu.Lock()
+	defer c.adminMu.Unlock()
+	if c.cachedAdminToken != "" && time.Now().Before(c.adminTokenUntil) {
+		return c.cachedAdminToken, nil
+	}
 	form := url.Values{}
 	form.Set("grant_type", "password")
 	form.Set("client_id", c.conf.AdminClientID)
@@ -1100,11 +1105,28 @@ func (c *Client) adminToken(ctx context.Context) (string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return "", err
 	}
-	return out.AccessToken, nil
+	c.cachedAdminToken = out.AccessToken
+	ttl := time.Duration(out.ExpiresIn)*time.Second - time.Minute
+	if ttl < 30*time.Second {
+		ttl = 30 * time.Second
+	}
+	c.adminTokenUntil = time.Now().Add(ttl)
+	return c.cachedAdminToken, nil
 }
 
 func (c *Client) clientUUID(ctx context.Context, token string) (string, error) {
-	return c.clientUUIDByName(ctx, token, c.conf.ClientID)
+	c.adminMu.Lock()
+	defer c.adminMu.Unlock()
+	if c.cachedClientUUID != "" && time.Now().Before(c.clientUUIDUntil) {
+		return c.cachedClientUUID, nil
+	}
+	uuid, err := c.clientUUIDByName(ctx, token, c.conf.ClientID)
+	if err != nil {
+		return "", err
+	}
+	c.cachedClientUUID = uuid
+	c.clientUUIDUntil = time.Now().Add(10 * time.Minute)
+	return uuid, nil
 }
 
 // clientUUIDByName resolves a client's UUID from its client-id string. Used
@@ -1175,6 +1197,21 @@ func (c *Client) getClientRole(ctx context.Context, clientID, token, name string
 }
 
 func (c *Client) adminRequest(ctx context.Context, method, url, token string, body interface{}) ([]byte, error) {
+	if method == http.MethodGet {
+		var lastErr error
+		for attempt := 0; attempt < 2; attempt++ {
+			out, err := c.adminRequestOnce(ctx, method, url, token, body)
+			if err == nil {
+				return out, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
+	}
+	return c.adminRequestOnce(ctx, method, url, token, body)
+}
+
+func (c *Client) adminRequestOnce(ctx context.Context, method, url, token string, body interface{}) ([]byte, error) {
 	reader, _ := body.(interface{ Read([]byte) (int, error) })
 	req, err := http.NewRequestWithContext(ctx, method, url, reader)
 	if err != nil {
@@ -1189,9 +1226,12 @@ func (c *Client) adminRequest(ctx context.Context, method, url, token string, bo
 		return nil, err
 	}
 	defer resp.Body.Close()
-	out, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	out, readErr := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("keycloak admin request failed: %s", resp.Status)
+	}
+	if readErr != nil {
+		return nil, fmt.Errorf("keycloak admin response incomplete: %w", readErr)
 	}
 	return out, nil
 }

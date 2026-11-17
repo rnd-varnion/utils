@@ -212,25 +212,49 @@ func (c *Client) ListUsersByRealmRole(ctx context.Context, roleName string) ([]U
 	if err != nil {
 		return nil, err
 	}
-	var all []User
-	const pageSize = 100
-	for first := 0; ; first += pageSize {
+	return fetchAllPages(100, 4, func(first, max int) ([]User, error) {
 		endpoint := c.adminEndpoint("roles/%s/users?first=%d&max=%d",
-			url.PathEscape(roleName), first, pageSize)
+			url.PathEscape(roleName), first, max)
 		body, err := c.adminRequest(ctx, http.MethodGet, endpoint, token, nil)
 		if err != nil {
 			return nil, err
 		}
 		var page []User
 		if err := json.Unmarshal(body, &page); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("page first=%d max=%d (%d bytes): %w", first, max, len(body), err)
 		}
-		all = append(all, page...)
-		if len(page) < pageSize {
-			break
+		return page, nil
+	})
+}
+
+func fetchAllPages(pageSize, wave int, fetch func(first, max int) ([]User, error)) ([]User, error) {
+	var all []User
+	for first := 0; ; first += pageSize * wave {
+		type pageResult struct {
+			users []User
+			err   error
+		}
+		pages := make([]pageResult, wave)
+		var wg sync.WaitGroup
+		for i := 0; i < wave; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				users, err := fetch(first+i*pageSize, pageSize)
+				pages[i] = pageResult{users: users, err: err}
+			}(i)
+		}
+		wg.Wait()
+		for _, p := range pages {
+			if p.err != nil {
+				return nil, p.err
+			}
+			all = append(all, p.users...)
+			if len(p.users) < pageSize {
+				return all, nil
+			}
 		}
 	}
-	return all, nil
 }
 
 // RevokeRealmRoleUserSessions revokes the active sessions of every user holding

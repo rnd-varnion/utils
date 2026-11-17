@@ -50,6 +50,11 @@ type Client struct {
 	mu         sync.RWMutex
 	jwks       map[string]*rsa.PublicKey
 	jwksUntil  time.Time
+	adminMu          sync.Mutex
+	cachedAdminToken string
+	adminTokenUntil  time.Time
+	cachedClientUUID string
+	clientUUIDUntil  time.Time
 }
 
 type TokenResponse struct {
